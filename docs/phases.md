@@ -164,21 +164,21 @@ Deviations: avoid metric-math alarms because Floci documents no evaluation for t
 
 ## Phase 8: Wrap up
 
-Status: in progress.
+Status: done.
 
 Goal: reproducible portfolio evidence and honest resume wording.
 
 Deliverables: CI, concise README linking these docs, architecture diagram, Mac Azure and Windows Ollama setup, real eval results, limitations, and resume-gap report.
 
-- [ ] Add GitHub Actions lint, tests, and Terraform validation.
-- [ ] Verify documented setup/run/evaluation commands.
-- [ ] Record the backend/model behind every reported number.
-- [ ] State plainly that AWS runs on Floci and no real AWS was tested.
-- [ ] Claim real Azure AI Foundry inference only after it actually runs.
-- [ ] State Bedrock is mock-tested only; compare all three resume bullets to evidence.
-- [ ] Suggest accurate wording and remaining gap-closing options without editing the resume.
-- [ ] Update all project docs and stop.
+- [x] Add GitHub Actions lint, tests, and Terraform validation.
+- [x] Verify documented setup/run/evaluation commands.
+- [x] Record the backend/model behind every reported number.
+- [x] State plainly that AWS runs on Floci and no real AWS was tested.
+- [x] Claim real Azure AI Foundry inference only after it actually runs.
+- [x] State Bedrock is mock-tested only; compare all three resume bullets to evidence.
+- [x] Suggest accurate wording and remaining gap-closing options without editing the resume.
+- [x] Update all project docs and stop.
 
-Run/test: the complete implemented check suite and clean setup checks, with CI results if available. Publish actual measured evaluation evidence and limitations.
+Run/test: all 182 tests passed locally and in an isolated example-only setup, along with Ruff, secret scanning and Terraform validation. GitHub Linux Python and Terraform jobs passed on push and PR runs. Both local Terragrunt repeat plans returned no changes. A cached baseline replay matched Phase 4 scores with one new Azure answer call; ingestion reused all 530 chunks with zero calls. See phase-8-results.md for run links, usage and reproduction.
 
-Deviations: Azure calls may incur costs at the user's request. A paid real-Bedrock smoke test is only a possible future option, never part of the current authorization.
+Deviations: CI tests SQL with an isolated pgvector container; full Floci application checks remain local. The first Linux validation exposed missing unpacked provider hashes; signed Linux/Mac hashes were added without changing versions. Phase 8 replayed only baseline to limit spend; the Phase 4 three-variant results stay unchanged. Windows/Ollama instructions are documented but not live-tested. Real Bedrock/AWS remains unauthorized and untested. All planned phases are complete; future gap-closing work requires a new request.

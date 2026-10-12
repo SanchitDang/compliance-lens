@@ -108,7 +108,7 @@ docs/
   resume-gap-report.md           original three claims, evidence, accurate wording and gaps
 ```
 
-Phases 0 through 7 are complete; Phase 8 is in progress and its files are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
+Phases 0 through 8 are complete; files above are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
 
 ## Naming and ownership
 

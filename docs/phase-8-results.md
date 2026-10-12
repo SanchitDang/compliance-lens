@@ -1,6 +1,6 @@
 # Phase 8 final verification
 
-Status: in progress; local checks passed, GitHub CI pending publication.
+Status: done; clean local setup and GitHub Linux CI passed.
 
 Verification date: October 11, 2026 in Toronto (October 12 UTC). This phase adds CI, a concise README/diagram, canonical Mac Azure and Windows Ollama server instructions, and the [resume evidence report](resume-gap-report.md). No resume was edited.
 
@@ -8,7 +8,7 @@ Verification date: October 11, 2026 in Toronto (October 12 UTC). This phase adds
 
 An isolated temporary checkout contained only registered source files and a copy of .env.example, with no private .env, downloaded corpus, caches, state or generated Lambda image. A fresh Python 3.12.15 environment installed the locked dependencies. config-check, Ruff lint/format and all pre-commit hooks passed. A separate temporary pgvector/pgvector:pg16 Docker container used the example's dummy database settings and a generated loopback port. All 182 tests, including 13 PostgreSQL integration cases, passed. Providers were mocked in tests; no hosted inference occurred in this clean check. Both spike and platform Terraform configurations passed init -backend=false -lockfile=readonly and validate using the committed AWS 6.68.0/archive 2.8.1 locks. The temporary checkout, virtual environment and database were removed.
 
-The existing Mac workspace independently passed all 182 tests, Ruff, Compose configuration and Terragrunt HCL formatting. Both dev/prod-style Terragrunt validations passed and repeat plans returned no changes (exit 0). The first GitHub Linux Python jobs passed all checks. Terraform init downloaded the pinned provider, but read-only validate rejected the unpacked Linux package because only Mac unpacked hashes were present in the committed locks. Signed darwin_arm64/linux_amd64 hashes are being added without changing versions; a corrected complete run is pending. Linux results do not establish Windows compatibility. The full ARM64 image build, Floci provisioning, workflow/API requests and automatic alarms remain the real checks recorded in [Phase 6](phase-6-results.md) and [Phase 7](phase-7-results.md); this documentation phase does not repeat destructive setup or alarm probes. Monitoring inspect worked for both environments, with all deployed alarms OK; its recent window was empty, so that observation is not another transition test.
+The existing Mac workspace independently passed all 182 tests, Ruff, Compose configuration and Terragrunt HCL formatting. Both dev/prod-style Terragrunt validations passed and repeat plans returned no changes (exit 0). The first GitHub Linux Python jobs passed all checks. Terraform init downloaded the pinned provider, but read-only validate rejected the unpacked Linux package because only Mac unpacked hashes were present in the committed locks. Signed darwin_arm64/linux_amd64 hashes were added without changing versions; corrected push and PR runs passed both jobs. Linux results do not establish Windows compatibility. The full ARM64 image build, Floci provisioning, workflow/API requests and automatic alarms remain the real checks recorded in [Phase 6](phase-6-results.md) and [Phase 7](phase-7-results.md); this documentation phase does not repeat destructive setup or alarm probes. Monitoring inspect worked for both environments, with all deployed alarms OK; its recent window was empty, so that observation is not another transition test.
 
 ## Corpus, safety and inference usage
 
@@ -29,6 +29,8 @@ One weak-evidence query skips chat, and refused supported output skips judging, 
 ## CI and reproduction
 
 The workflow runs on dev/main pushes and PRs into main, with read-only contents permission, full action commit pins and bounded timeouts. It uses uv 0.12.24, locked Python dependencies, an isolated database and Terraform 1.16.4. Database bootstrap settings are read from .env.example instead of duplicated credentials. It needs no Azure or AWS secrets and makes no provider inference, Terraform apply or Floci deployment calls. Public dependency/provider/container downloads still need network access.
+
+Corrected [PR CI run 38197581766](https://github.com/SanchitDang/compliancelens/actions/runs/38197581766) and [dev push run 38197578506](https://github.com/SanchitDang/compliancelens/actions/runs/38197578506) passed Python and Terraform jobs for feature commit b2f94ca44fe768e591b0e2f0a7a974a768244822. Python ran all 182 tests on Linux with no provider credentials. These runs include the signed cross-platform lock correction; the initial failing runs remain visible. Final documentation-only publication receives the same checks before PR merge. The existing SSH login was used to publish the workflow because the HTTPS OAuth token lacks workflow scope; no credential was created or exposed.
 
 Canonical commands, including build/apply and Windows listener/firewall instructions, live in [design principles](design-principles.md). Final local reproduction:
 
