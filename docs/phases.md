@@ -190,5 +190,6 @@ Status: done.
 
 - [x] Rename the GitHub repository to SanchitDang/compliance-lens at the user's request.
 - [x] Update the local origin, CI badge, published evidence links and naming registry.
+- [x] Rename the local checkout folder to compliance-lens, rebuild the virtual environment/hooks and pin the existing Compose project identity.
 
-Verification: GitHub API reports the new name and URL. Documentation changes follow dev → PR → main, with the existing pre-commit and CI checks.
+Verification: GitHub API reports the new name and URL. The checkout moved to compliance-lens; config-check, all 182 tests and Compose startup succeeded from the new path with the existing volume; the 530-row Azure corpus was preserved. Dev/prod-style Terragrunt init/validate passed and repeat plans showed no changes. Documentation changes follow dev → PR → main, with the existing pre-commit and CI checks.

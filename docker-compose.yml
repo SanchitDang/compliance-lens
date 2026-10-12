@@ -1,3 +1,5 @@
+name: compliancelens
+
 services:
   floci:
     image: ${FLOCI_IMAGE:?Copy .env.example to .env}
