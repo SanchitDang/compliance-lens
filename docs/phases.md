@@ -182,3 +182,13 @@ Deliverables: CI, concise README linking these docs, architecture diagram, Mac A
 Run/test: all 182 tests passed locally and in an isolated example-only setup, along with Ruff, secret scanning and Terraform validation. GitHub Linux Python and Terraform jobs passed on push and PR runs. Both local Terragrunt repeat plans returned no changes. A cached baseline replay matched Phase 4 scores with one new Azure answer call; ingestion reused all 530 chunks with zero calls. See phase-8-results.md for run links, usage and reproduction.
 
 Deviations: CI tests SQL with an isolated pgvector container; full Floci application checks remain local. The first Linux validation exposed missing unpacked provider hashes; signed Linux/Mac hashes were added without changing versions. Phase 8 replayed only baseline to limit spend; the Phase 4 three-variant results stay unchanged. Windows/Ollama instructions are documented but not live-tested. Real Bedrock/AWS remains unauthorized and untested. All planned phases are complete; future gap-closing work requires a new request.
+
+
+## Repository maintenance
+
+Status: done.
+
+- [x] Rename the GitHub repository to SanchitDang/compliance-lens at the user's request.
+- [x] Update the local origin, CI badge, published evidence links and naming registry.
+
+Verification: GitHub API reports the new name and URL. Documentation changes follow dev → PR → main, with the existing pre-commit and CI checks.
