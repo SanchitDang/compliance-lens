@@ -5,7 +5,9 @@ This file owns repository conventions. Read it and phases.md at the start of eve
 ## Folder and file registry
 
 ```text
-README.md                       brief setup and documentation links
+README.md                       portfolio overview, diagram, and documentation links
+.github/workflows/
+  ci.yml                        credential-free lint, secret scan, database tests, Terraform validation
 pyproject.toml                  Python dependencies, tools, CLI entry point
 uv.lock                         resolved Python dependency versions
 .python-version                 Python 3.12 selection
@@ -102,9 +104,11 @@ docs/
   phase-5-results.md             resource/API verification and measured emulator limits
   phase-6-results.md             live application workflow/API evidence and limits
   phase-7-results.md             telemetry, alarm transitions, usage, emulator limits
+  phase-8-results.md             clean setup, CI evidence, final verification and limits
+  resume-gap-report.md           original three claims, evidence, accurate wording and gaps
 ```
 
-Phases 0 through 7 are complete; files above are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
+Phases 0 through 8 are complete; files above are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
 
 ## Naming and ownership
 
@@ -140,8 +144,8 @@ mkdir -p ~/.docker/cli-plugins
 ln -s /opt/homebrew/lib/docker/cli-plugins/docker-compose ~/.docker/cli-plugins/docker-compose
 colima start --cpu 4 --memory 6 --disk 30 --vm-type vz --mount-type virtiofs
 uv python install 3.12
-uv sync --group dev
-cp .env.example .env
+uv sync --locked --group dev
+test -f .env || cp .env.example .env
 chmod 600 .env
 uv run compliancelens config-check
 uv run pytest
@@ -170,7 +174,49 @@ docker compose down
 
 The Homebrew/Colima commands are Mac prerequisites, run once if missing. Skip the plugin symlink if it already exists or Docker Desktop already supplies Compose. Colima is a free local Docker runtime; its VM and containers remain running until stopped. Use `colima stop` after stopping Compose if you want to release the VM's resources. This session installed these tools because they were missing.
 
-On the Windows PC, install Ollama and run `ollama pull qwen3:8b` and `ollama pull embeddinggemma:300m`. For an offline local setup, change LLM_BACKEND and EMBEDDING_BACKEND to ollama in the Mac's .env, set OLLAMA_BASE_URL to the PC's reachable LAN URL, set EMBEDDING_DIMENSION to 768, and set VECTOR_TABLE to regulatory_chunks_ollama. Confirm the returned dimension on the first run. Configure the server's LAN listener and firewall before remote use. Mac Azure setup uses the .env.example selections and fills the endpoint, key, and chat deployment only in .env. Azure embeddings and chat are live-tested. The Ollama embedding and chat adapters are mock-tested only so far. Full remote-server instructions and live model verification belong to later phases.
+### Mac Azure setup
+
+Use the prerequisite and spike commands above on Apple Silicon. The spike creates the CLI database and writes its outputs before ingestion; the platform environments use separate databases. Edit the existing ignored .env locally: fill AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT from your Azure AI Foundry deployments. Keep both backend selectors at azure, the embedding deployment/API versions and dimension from .env.example, and the output cap at 2048. Do not put credentials in shell commands, Terraform or git. config-check validates settings, not Azure authentication. Provider failures are journaled without their raw error bodies.
+
+After the spike, ingest and query using the Phase 1/2 commands below. For the API, use the Phase 6 build/apply commands; from each infra/environments/{dev,prod}, `terragrunt output -raw query_url` prints that environment's endpoint. Then `uv run python infra/application.py --environment dev --document-id pipeda-accountability --verify-api` verifies workflow and API, with bounded Azure calls; repeat for prod-style. The read-only host .env mount supplies credentials. A full Lambda build downloads Linux ARM64 dependencies and may take several minutes. Azure charges for uncached inference; a fresh eval can issue many requests.
+
+### Windows PC as the Ollama server
+
+Install [Ollama for Windows](https://docs.ollama.com/windows) and a compatible NVIDIA driver. Quit the tray application, then run these PowerShell commands as your normal Windows user:
+
+```powershell
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "User")
+[Environment]::SetEnvironmentVariable("OLLAMA_NO_CLOUD", "1", "User")
+```
+
+Restart Ollama from the Start menu and open a new PowerShell window. Pull the configured models once while online:
+
+```powershell
+ollama pull qwen3:8b
+ollama pull embeddinggemma:300m
+ollama list
+ipconfig
+Invoke-RestMethod http://localhost:11434/api/tags
+$body = @{ model = "embeddinggemma:300m"; input = @("Public regulatory text") } | ConvertTo-Json
+$result = Invoke-RestMethod http://localhost:11434/api/embed -Method Post -ContentType "application/json" -Body $body
+$result.embeddings[0].Count
+ollama ps
+```
+
+Expect 768 dimensions and verify before ingestion. The [Qwen3 8B tag](https://ollama.com/library/qwen3:8b) currently uses Q4_K_M weights (5.2 GB); [EmbeddingGemma 300M](https://ollama.com/library/embeddinggemma) is 622 MB and requires Ollama 0.11.10 or newer. Weight size suggests an 8 GB GPU is plausible, but runtime/context overhead and both loaded models can cause CPU offload; inspect ollama ps rather than claiming measured VRAM fit. These are documented model properties, not this project's inference measurements.
+
+Use the PC's IPv4 LAN address from ipconfig. On a trusted Private network, run this once in Administrator PowerShell, replacing the placeholder with the Mac's LAN IP:
+
+```powershell
+New-NetFirewallRule -DisplayName "ComplianceLens Ollama LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 11434 -Profile Private -RemoteAddress "<MAC_LAN_IP>"
+```
+
+The [Ollama FAQ](https://docs.ollama.com/faq) documents the listener and local-only settings; [Microsoft's firewall reference](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule) documents the restricted rule. This API is reachable by allowed LAN peers; no Internet port forwarding. Do not add duplicate broad firewall rules.
+
+In the Mac's .env set LLM_BACKEND=ollama, EMBEDDING_BACKEND=ollama, OLLAMA_BASE_URL to http://<PC_LAN_IP>:11434, EMBEDDING_DIMENSION=768 and VECTOR_TABLE=regulatory_chunks_ollama. Keep the configured model names in .env.example. Check reachability from the Mac with `curl --fail http://<PC_LAN_IP>:11434/api/tags`, then run config-check, ingest and ask. Existing Azure vectors are refused; re-ingest into the separate Ollama table. Lambda handlers read the mounted .env on each invocation; their environment-specific database routing still overrides host database settings. Offline inference works after models, Python dependencies and public documents are downloaded.
+
+The Mac hosts the Python app and Floci; the Windows PC hosts Ollama only. This setup guide is checked against official documentation, but no Windows PC or live Ollama inference was available for verification. Both adapters remain transport-mocked. Full x86_64 Lambda packaging is outside the verified ARM64 design. Azure chat and embeddings are live-tested.
+
 
 The Bedrock embedding adapter implements Titan Text Embeddings v2 through boto3 InvokeModel. Set EMBEDDING_DIMENSION to 256, 512, or 1024 and use a separate VECTOR_TABLE such as regulatory_chunks_bedrock. The configured model ID lives in .env.example. This adapter is tested with boto3 Stubber, not real Bedrock. Floci's dummy responses cannot provide usable regulatory embeddings.
 
@@ -255,4 +301,13 @@ Names, state ownership, and endpoint rules remain active. Empty-table and scaffo
 - Errors counts handler exceptions or query operational errors (409/5xx), not validation rejection or legitimate refusal. RejectedRequests counts 400/405/415. Refusals counts safe refusals; GuardrailBlocks distinguishes security/output-validation refusals from weak/unsupported evidence. RetrievedChunks counts the final retained query evidence, zero for nonquery operations and pre-retrieval refusal. LatencyMs measures handler work through response/journal creation, excluding telemetry delivery and platform cold-start initialization. Always publish zero-valued counters for a completed invocation.
 - monitoring.tf defines seven log metric filters and errors/latency alarms for each of four stages. main.tf locals own names {prefix}-{stage}-errors and {prefix}-{stage}-latency, plus metric-filter names {prefix}-{stage}-{metric-field-with-hyphens}, period 60 seconds, Sum Errors threshold 0 and Average LatencyMs threshold 30000, evaluation_periods=1, missing data notBreaching. Thresholds are local demonstration defaults, not an SLO. No SNS notifications or metric-math expressions. outputs.tf exposes namespace, alarm names, and derived log-group names; monitoring.py reads outputs and imports telemetry.py metric names rather than creating alternatives.
 - infra/monitoring.py inspect --environment dev reads recent logs, metric statistics, and alarm states; verify --environment dev --document-id pipeda-accountability exercises invalid/injection requests, an invalid workflow, one bounded Azure supported query, and repeat ingestion without embedding calls. Publish clearly marked synthetic samples only to an isolated temporary namespace {namespace}/Verification/{uuid} with temporary alarms named {Terraform-owned errors alarm}-probe-{uuid} and {Terraform-owned latency alarm}-probe-{uuid}; delete alarms after automatic transitions. Temporary thresholds/dimensions mirror deployed alarms. Do not fake latency delays or contaminate application series. Never call SetAlarmState to claim evaluator success. Synthetic observations are separately labelled in the ignored UUID verification journal. Repeat for prod-style. Verify synthetic email and the actual Azure key are absent from raw handler CloudWatch messages. Inspect projects only closed-schema fields and reports historical delivery failures as counts.
-- Commands: `uv run python infra/package.py --application-only` after a full dependency build; `docker compose up -d --wait`; from each environment run `terragrunt validate`, `terragrunt plan -out=phase7.tfplan`, `terragrunt apply phase7.tfplan`, and `terragrunt plan -detailed-exitcode`; `uv run python infra/monitoring.py inspect --environment dev`; `uv run python infra/monitoring.py verify --environment dev --document-id pipeda-accountability` and the same for prod. Full tests/format/secret checks remain canonical. Actual alarm observations must distinguish configuration, synthetic evaluation, and production-series evaluation. Phase 8 remains unstarted. Similarity remains in query journals; the monitoring retrieval metric counts retained chunks, a documented deviation from the earlier planned score.
+- Commands: `uv run python infra/package.py --application-only` after a full dependency build; `docker compose up -d --wait`; from each environment run `terragrunt validate`, `terragrunt plan -out=phase7.tfplan`, `terragrunt apply phase7.tfplan`, and `terragrunt plan -detailed-exitcode`; `uv run python infra/monitoring.py inspect --environment dev`; `uv run python infra/monitoring.py verify --environment dev --document-id pipeda-accountability` and the same for prod. Full tests/format/secret checks remain canonical. Actual alarm observations must distinguish configuration, synthetic evaluation, and production-series evaluation. Phase 8 adds CI and final evidence. Similarity remains in query journals; the monitoring retrieval metric counts retained chunks, a documented deviation from the earlier planned score.
+
+
+## Phase 8 delivery conventions
+
+- .github/workflows/ci.yml owns the CI workflow, with python and terraform jobs on pushes to dev/main and pull requests to main. Use read-only contents permission, bounded job timeouts, full commit pins for third-party actions, uv 0.12.24 and Terraform 1.16.4. CI copies only the public example configuration into an ephemeral .env and runs no hosted inference, Floci deployment, or Terraform apply. Python installs the locked dependencies, runs Ruff, all pre-commit hooks and PostgreSQL integration tests using an isolated pgvector/pgvector:pg16 container. Its dummy database settings come from .env.example; only DATABASE_PORT overrides the local RDS proxy port with Docker's dynamically published loopback port. POSTGRES_USER, POSTGRES_PASSWORD and POSTGRES_DB are container-native bootstrap variables, derived from the example rather than new application settings.
+- CI initializes the spike configuration with its committed lock and the platform module with the dev environment's committed lock, using -backend=false -lockfile=readonly; validate both and check recursive Terraform formatting. Provider downloads are public, not AWS calls. Committed provider locks include signed darwin_arm64 and linux_amd64 hashes; regenerate both with terraform providers lock -platform=darwin_arm64 -platform=linux_amd64 in the corresponding isolated module configuration before copying the platform lock to both environments. Keep provider versions unchanged. Local Terragrunt formatting/validation/plans and live Floci checks remain separate evidence.
+- Windows runs only the Ollama server; Mac runs the Python app and ARM64 local infrastructure. External Ollama server variables OLLAMA_HOST and OLLAMA_NO_CLOUD belong to the Windows service, not config.py or .env.example. No full Windows application deployment or live Ollama success is claimed. A user-created firewall rule is named ComplianceLens Ollama LAN and restricted to TCP 11434, the Private profile and the Mac's IP; its name is owned here. Do not forward the port to the Internet. Model tags can move; record actual model identity and dimension on a future live run.
+- docs/resume-gap-report.md compares the three original requested resume bullets without editing a resume. Attribute every model-produced metric to backend/model and its measured run; identify local synthetic fixtures separately. State real Azure AI Foundry inference, Bedrock mock testing, Ollama transport mocking, and Floci-only AWS execution.
+- Setup verification can use an isolated temporary checkout and virtual environment with only .env.example values, plus a temporary loopback-published Docker pgvector service with a Docker-generated name/port. Temporary verification artifacts are outside the repo and deleted after checks; never copy .env, state, caches or downloaded corpus into the clean checkout. Existing corpus repeats and cached evals may use local settings but any newly uncached requests must be counted, with no automatic cache refresh. Cached replay is not new inference.

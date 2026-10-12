@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: '0.12.24'
+      - run: uv python install 3.12
+      - run: uv sync --locked --group dev
+      - run: cp .env.example .env
+      - run: uv run compliancelens config-check
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pre-commit run --all-files
+      - name: Start isolated pgvector database
+        run: |
+          uv run python - <<'PYTHON'
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+          from dotenv import dotenv_values
+
+          values = dotenv_values(".env.example")
+          command = ["docker", "run", "-d", "--rm", "-p", "127.0.0.1::5432"]
+          for target, source in [("POSTGRES_USER", "DATABASE_USER"), ("POSTGRES_PASSWORD", "DATABASE_PASSWORD"), ("POSTGRES_DB", "DATABASE_NAME")]:
+              command.extend(["-e", f"{target}={values[source]}"])
+          container = subprocess.check_output(command + [values["FLOCI_SERVICES_RDS_DEFAULT_POSTGRES_IMAGE"]], text=True).strip()
+          for attempt in range(60):
+              check = subprocess.run(["docker", "exec", container, "pg_isready", "-U", values["DATABASE_USER"], "-d", values["DATABASE_NAME"]], capture_output=True)
+              if check.returncode == 0:
+                  break
+              time.sleep(1)
+          else:
+              raise RuntimeError("PostgreSQL did not become ready")
+          port = subprocess.check_output(["docker", "port", container, "5432/tcp"], text=True).strip().rsplit(":", 1)[1]
+          with Path(os.environ["GITHUB_ENV"]).open("a") as output:
+              output.write(f"DATABASE_PORT={port}\n")
+          PYTHON
+      - run: uv run pytest --db-integration
+
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: '1.16.4'
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive infra
+      - run: terraform -chdir=infra/spikes init -backend=false -lockfile=readonly
+      - run: terraform -chdir=infra/spikes validate
+      - run: cp infra/environments/dev/.terraform.lock.hcl infra/modules/platform/.terraform.lock.hcl
+      - run: terraform -chdir=infra/modules/platform init -backend=false -lockfile=readonly
+      - run: terraform -chdir=infra/modules/platform validate
