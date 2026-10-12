@@ -164,7 +164,7 @@ Deviations: avoid metric-math alarms because Floci documents no evaluation for t
 
 ## Phase 8: Wrap up
 
-Status: not started.
+Status: in progress.
 
 Goal: reproducible portfolio evidence and honest resume wording.
 

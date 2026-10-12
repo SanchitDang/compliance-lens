@@ -1,32 +1,45 @@
 # ComplianceLens
 
-A portfolio project being built toward a source-citing RAG assistant for public Canadian financial regulatory documents from OSFI, FINTRAC, and the Privacy Commissioner/PIPEDA.
+[![CI](https://github.com/SanchitDang/compliancelens/actions/workflows/ci.yml/badge.svg)](https://github.com/SanchitDang/compliancelens/actions/workflows/ci.yml)
 
-Phases 0 through 7 provide verified infrastructure, document ingestion, and cited question answering. Ten official documents produced 530 redacted chunks with real Azure AI Foundry embeddings; an unchanged repeat made zero provider requests. The ask CLI retrieves public evidence, answers supported questions, and refuses weak or unsupported requests. Azure chat was exercised live. Local safety checks cover known attacks and detected PII; the results document remaining misses and false positives. AWS runs locally on Floci, with no real AWS account. Azure is the Mac backend and incurs usage charges; Ollama is the offline option. Bedrock embeddings and chat are mock-tested only.
+A Python/LangChain RAG assistant for public OSFI, FINTRAC and PIPEDA guidance, with source citations, pgvector retrieval, safety checks and a measured evaluation set.
 
-The project documentation is the source of truth:
+**AWS runs locally on Floci; no real AWS account was tested.** Real chat and embedding inference ran on Azure AI Foundry. Bedrock is mock-tested only, and Ollama is transport-mocked. Azure incurs usage charges.
 
-- [Setup, commands, structure, and design rules](docs/design-principles.md)
-- [Architecture and verified emulator limits](docs/architecture.md)
-- [Phase checklists and current status](docs/phases.md)
-- [Phase 0 test evidence and reproduction steps](docs/phase-0-results.md)
-- [Phase 1 ingestion evidence and reproduction steps](docs/phase-1-results.md)
-- [Phase 2 RAG evidence and reproduction steps](docs/phase-2-results.md)
-- [Phase 3 safety measurements and known limits](docs/phase-3-results.md)
-- [Phase 4 evaluation evidence](docs/phase-4-results.md)
-- [Phase 5 infrastructure evidence and emulator limits](docs/phase-5-results.md)
-- [Phase 6 Lambda workflows, query API, and Azure usage](docs/phase-6-results.md)
-- [Phase 7 telemetry and automatic alarm evidence](docs/phase-7-results.md)
-- [Measured Azure evaluation comparison](eval/results/phase-4.md)
+```mermaid
+flowchart LR
+    Public[Public regulatory documents] --> S3[S3 artifacts on Floci]
+    S3 --> Workflow[Explicit Step Functions ingestion]
+    Workflow --> Stages[Parse / chunk / embed Lambdas]
+    Stages --> Privacy[PII redaction]
+    Privacy --> Embeddings[Azure / Ollama / Bedrock embeddings]
+    Embeddings --> DB[(pgvector on Floci RDS)]
+    Client --> API[API Gateway and query Lambda]
+    API --> Safety[Input and context checks]
+    Safety --> DB
+    DB --> LLM[Redacted public context to chat backend]
+    LLM --> Answer[Output checks and trusted citations]
+    Answer --> Client
+    Stages --> Logs[CloudWatch logs / metric filters / alarms]
+    API --> Logs
+```
 
-Start with the setup commands in design-principles.md. Keep keys only in the ignored .env. The code's chat backend default is Bedrock; the local example explicitly selects Azure. Work on dev and merge to main through pull requests.
+Start with the canonical [Mac setup](docs/design-principles.md#commands), [Azure configuration](docs/design-principles.md#mac-azure-setup) or [Windows Ollama server setup](docs/design-principles.md#windows-pc-as-the-ollama-server). Keys live only in ignored .env. The Mac hosts the app and ARM64 Floci infrastructure; the Windows PC can host Ollama. Use dev, then PR and merge to main.
 
-Run ingestion with `uv run compliancelens ingest`, ask with `uv run compliancelens ask "Under PIPEDA, how should sensitive personal information be protected?"`, and test against the local database with `uv run pytest --db-integration`.
+After setup and database provisioning:
 
-Run the local synthetic safety assessment with `uv run compliancelens safety-check`; it makes no provider requests.
+```bash
+uv run compliancelens ingest
+uv run compliancelens ask "Under PIPEDA, how should sensitive personal information be protected?"
+uv run compliancelens safety-check
+uv run pytest --db-integration
+RETRIEVAL_TOP_K=6 uv run compliancelens eval
+```
 
-Run the 34-question development evaluation with `RETRIEVAL_TOP_K=6 uv run compliancelens eval`. It compares three retrieval settings, caches safe responses locally, and records Azure token usage and judge limitations.
+Evaluation uses 34 questions and ignored disk caches, with per-run usage logs. A fresh checkout makes paid Azure calls; cached responses are reused only when their complete identity and safety checks match. Unchanged ingestion reuses chunk hashes. Switching embedding models requires a fresh or separate vector table.
 
-Terraform deploys separate dev and prod-style stacks on Floci with working image-based Lambda ingestion and a cited-answer query API. Follow the build/apply commands in design-principles.md, then verify with `uv run python infra/application.py --environment dev --document-id pipeda-accountability --verify-api`. Each application database contains five representative Azure-embedded chunks; the full CLI corpus remains separate. Keys are read from a local read-only .env mount.
+The measured [Phase 4 comparison](eval/results/phase-4.md) uses Azure AI Foundry gpt-5.4-mini-2026-03-17 for answers/judgments and Azure text-embedding-3-small, 1536 dimensions, over ten documents and 530 chunks. Baseline judge answer acceptance was 23/30; focused context reached 27/30 with 91/94 supported claim/source pairs. These are subjective development-set scores, not independent legal accuracy. Application defaults remain baseline.
 
-Inspect redacted invocation logs, custom metrics, and alarm states with `uv run python infra/monitoring.py inspect --environment dev`. CloudWatch metric filters and single-metric alarms run locally on Floci; automatic failure/recovery transitions were verified. See the Phase 7 evidence for actual versus synthetic checks.
+Both local dev/prod-style APIs and ingestion workflows were exercised. Each application database holds five representative chunks; the full CLI corpus is separate. [Monitoring](docs/phase-7-results.md) verified metric statistics and automatic error-alarm recovery. Inspect with `uv run python infra/monitoring.py inspect --environment dev`. Full build, Terraform/Terragrunt, API and eval commands have one owner in [design principles](docs/design-principles.md).
+
+Privacy and injection checks have documented misses and false positives. Live Ollama, real Bedrock/AWS, production load, latency breaches and notifications remain unverified. See the [architecture and limitations](docs/architecture.md), [completed phases and evidence](docs/phases.md), [final verification](docs/phase-8-results.md) and [resume wording/gaps](docs/resume-gap-report.md).
