@@ -28,6 +28,8 @@ def test_provisioning_never_exports_azure_keys_or_real_database_password(
     values = provisioning.terraform_inputs(ROOT)
     assert set(values) == {
         "image_uri",
+        "telemetry_namespace",
+        "telemetry_metrics",
         "endpoint",
         "region",
         "database_user",

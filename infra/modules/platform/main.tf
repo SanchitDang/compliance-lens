@@ -22,6 +22,7 @@ provider "aws" {
   s3_use_path_style           = true
   endpoints {
     apigateway     = var.endpoint
+    cloudwatch     = var.endpoint
     cloudwatchlogs = var.endpoint
     ec2            = var.endpoint
     iam            = var.endpoint
@@ -38,7 +39,19 @@ provider "aws" {
 locals {
   prefix = "compliancelens-${var.environment}"
   stages = ["parse", "chunk", "embed", "query"]
+  alarm_types = {
+    errors  = { metric = var.telemetry_metrics["errors"].name, statistic = "Sum", threshold = 0 }
+    latency = { metric = var.telemetry_metrics["latency_ms"].name, statistic = "Average", threshold = 30000 }
+  }
+  alarm_specs = { for item in flatten([
+    for stage in local.stages : [for kind, spec in local.alarm_types : merge(spec, { stage = stage, kind = kind })]
+  ]) : "${item.stage}_${item.kind}" => item }
+  filter_specs = { for item in flatten([
+    for stage in local.stages : [for field, spec in var.telemetry_metrics : merge(spec, { stage = stage, field = field })]
+  ]) : "${item.stage}_${item.field}" => item }
   names = {
+    alarms               = { for key, spec in local.alarm_specs : key => "${local.prefix}-${spec.stage}-${spec.kind}" }
+    metric_filters       = { for key, spec in local.filter_specs : key => "${local.prefix}-${spec.stage}-${replace(spec.field, "_", "-")}" }
     raw_bucket           = "${local.prefix}-raw"
     intermediate_bucket  = "${local.prefix}-intermediate"
     database             = "${local.prefix}-db"

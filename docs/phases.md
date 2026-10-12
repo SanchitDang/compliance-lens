@@ -146,21 +146,21 @@ Deviations: container images replace ZIP packaging because dependencies exceed t
 
 ## Phase 7: Monitoring
 
-Status: not started.
+Status: done.
 
 Goal: observable behavior with redacted telemetry and useful local alarms.
 
 Deliverables: structured CloudWatch logs, latency/retrieval/refusal/guardrail/error metrics, single-metric alarms, and inspection commands.
 
-- [ ] Redact before structured logs are emitted.
-- [ ] Publish and verify custom metric statistics.
-- [ ] Create errors/latency alarms and test their actual transitions.
-- [ ] Provide simple log/metric/alarm viewing commands.
-- [ ] Document Floci limits versus real CloudWatch.
+- [x] Redact before structured logs are emitted.
+- [x] Publish and verify custom metric statistics.
+- [x] Create errors/latency alarms and test their actual transitions.
+- [x] Provide simple log/metric/alarm viewing commands.
+- [x] Document Floci limits versus real CloudWatch.
 
-Run/test: representative API and failure requests, CloudWatch get/filter/statistics/describe calls, and pytest telemetry/redaction tests. Verify evaluation rather than merely alarm creation.
+Run/test: infra/monitoring.py verify exercises each environment with actual API/workflow requests and isolated alarm clones; inspect reads safe logs, statistics, and states. Real parse failures caused deployed ALARM→OK transitions; all eight cloned error/latency alarms per environment completed OK→ALARM→OK. All seven metric sums matched invocation logs for every stage. All 182 tests, formatting, validations, repeat plans, secret and privacy checks passed. See phase-7-results.md for exact backend, usage, reproduction, and limits.
 
-Deviations: avoid metric-math alarms because Floci documents no evaluation for them.
+Deviations: avoid metric-math alarms because Floci documents no evaluation for them. Namespace-conditioned metric publication failed in Floci, so scoped log metric filters generate application metrics. Isolated clones test all error/latency configurations without inserting fake application data; only real parse errors drove a deployed failure transition. Retained-chunk count replaces the architecture’s previously planned retrieval-score telemetry, while similarity remains in query journals.
 
 ## Phase 8: Wrap up
 

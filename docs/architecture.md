@@ -1,20 +1,22 @@
 # Architecture
 
-Current state: Phases 0 through 6 are verified. The local CLI downloads ten official documents, parses and redacts them, and stores 530 chunks with real Azure embeddings in Floci RDS using a 1536-dimension HNSW index. An unchanged repeat made zero provider requests. Infrastructure probes verified S3, Terraform/Terragrunt, Lambda SQL connectivity, and restart persistence. The CLI also retrieves public evidence and produces cited answers using real Azure chat inference, with weak-evidence and unsupported-question refusals. See [Phase 0 evidence](phase-0-results.md), [Phase 1 evidence](phase-1-results.md), [Phase 2 evidence](phase-2-results.md), [Phase 3 evidence](phase-3-results.md), [Phase 4 evidence](phase-4-results.md), [Phase 5 evidence](phase-5-results.md), and [Phase 6 evidence](phase-6-results.md).
+Current state: Phases 0 through 7 are verified. The local CLI downloads ten official documents, parses and redacts them, and stores 530 chunks with real Azure embeddings in Floci RDS using a 1536-dimension HNSW index. An unchanged repeat made zero provider requests. Infrastructure probes verified S3, Terraform/Terragrunt, Lambda SQL connectivity, and restart persistence. The CLI also retrieves public evidence and produces cited answers using real Azure chat inference, with weak-evidence and unsupported-question refusals. See [Phase 0 evidence](phase-0-results.md), [Phase 1 evidence](phase-1-results.md), [Phase 2 evidence](phase-2-results.md), [Phase 3 evidence](phase-3-results.md), [Phase 4 evidence](phase-4-results.md), [Phase 5 evidence](phase-5-results.md), [Phase 6 evidence](phase-6-results.md), and [Phase 7 evidence](phase-7-results.md).
 
-The diagram shows the implemented application flow and planned monitoring. Terraform now deploys the S3, Step Functions, Lambda, API Gateway, IAM, log-group, and RDS wiring in dev and prod-style local environments. Container-image Lambda handlers now ingest a representative public document and answer queries through the REST API in both environments. The full CLI corpus remains separate. CloudWatch custom metrics and alarms remain Phase 7.
+The diagram shows the implemented application and monitoring flows. Terraform now deploys the S3, Step Functions, Lambda, API Gateway, IAM, log-group, and RDS wiring in dev and prod-style local environments. Container-image Lambda handlers now ingest a representative public document and answer queries through the REST API in both environments. The full CLI corpus remains separate. Structured logs, custom metrics, and single-metric alarms now run through local CloudWatch.
 
 ```mermaid
 flowchart LR
-    Sources[Public OSFI, FINTRAC, OPC documents] --> S3
-    S3 --> SF[Step Functions]
+    Sources[Public OSFI, FINTRAC, OPC documents] --> Upload[Validated local uploader]
+    Upload --> S3[Raw and intermediate S3 artifacts]
+    Upload --> SF[Step Functions]
+    S3 -. artifact reads and writes .-> Parse
     SF --> Parse[Parse Lambda]
     Parse --> Chunk[Chunk Lambda]
     Chunk --> Embed[Embed Lambda]
     Embed --> Privacy[PII redaction boundary]
     Privacy --> EB[Embedding backend: Azure / Ollama / Bedrock]
     EB --> PG[(pgvector on Floci RDS)]
-    User[CLI or API client] --> API[API Gateway]
+    User[API client] --> API[API Gateway]
     API --> Query[Query Lambda]
     Query --> Safety[PII redaction and injection checks]
     Safety --> PG
@@ -22,13 +24,17 @@ flowchart LR
     Context --> Chat[Chat backend: Azure / Ollama / Bedrock]
     Chat --> Output[Output checks and source citations]
     Output --> User
-    Query --> CW[CloudWatch: redacted logs, metrics, alarms]
-    SF --> CW
+    Query --> CW[CloudWatch: closed-schema invocation logs]
+    Parse --> CW
+    Chunk --> CW
+    Embed --> CW
+    CW --> Filters[Log metric filters]
+    Filters --> Alarms[Single-metric error and latency alarms]
 ```
 
 ## AWS emulation and infrastructure
 
-All AWS resources run on Floci in Docker, not a real AWS account. Floci exposes AWS APIs on a configurable endpoint, conventionally port 4566. Docker socket access lets it start real Lambda and database containers. The Compose service hostname and shared network make child-container endpoints reachable. Terraform uses the standard AWS provider, explicit service endpoints, and dummy local credentials; Terragrunt wraps it. Phase 0 uses local state. The shared platform module now provisions 33 resources per environment, with separate local state outside Terragrunt caches. Resource names have one owner in platform/main.tf locals. Dev and prod are both local environments, with separate raw/intermediate buckets, four Lambdas, an ingestion workflow, REST query API, scoped IAM roles, logs, and Docker-backed RDS instances. Each application database contains five real Azure-embedded representative chunks in configured-dimension vector tables; the existing CLI corpus remains on its original database.
+All AWS resources run on Floci in Docker, not a real AWS account. Floci exposes AWS APIs on a configurable endpoint, conventionally port 4566. Docker socket access lets it start real Lambda and database containers. The Compose service hostname and shared network make child-container endpoints reachable. Terraform uses the standard AWS provider, explicit service endpoints, and dummy local credentials; Terragrunt wraps it. Phase 0 uses local state. The shared platform module now provisions 69 resources per environment, with separate local state outside Terragrunt caches. Resource names have one owner in platform/main.tf locals. Dev and prod are both local environments, with separate raw/intermediate buckets, four Lambdas, an ingestion workflow, REST query API, scoped IAM roles, logs, and Docker-backed RDS instances. Each application database contains five real Azure-embedded representative chunks in configured-dimension vector tables; the existing CLI corpus remains on its original database.
 
 Hybrid Floci storage retains resource metadata, with named volumes for RDS data. The restart probe preserved the S3 object and both vector rows. The RDS image override selects pgvector/pgvector:pg16, a Docker Hub tag published for ARM64 and AMD64. Its measured extension version is 0.8.7; the image digest is recorded in phase-0-results.md. Phase 0 uses synthetic vectors with the configured dimension and an HNSW cosine index. It does not call an embedding provider. Lambda SQL connectivity was verified through the advertised Floci RDS proxy endpoint on the shared Docker network.
 
@@ -56,7 +62,7 @@ No text goes to Azure before PII redaction. Only manifest-listed public regulato
 
 Ingestion batches embeddings, caps new batches, and journals reported token usage and requests with unknown usage. Chat adapters enforce LLM_MAX_OUTPUT_TOKENS (initially 2048). Query journals record provider model, reported input/output tokens, unknown usage, question/prompt hashes, index/manifest identity, and refusals; raw questions, prompts, and provider error bodies are not journaled. The eval CLI validates exact public gold references before inference, compares baseline/wider/focused contexts, and reports deterministic gold-chunk hits plus reference-guided answer and citation judgments. Its ignored disk caches key redacted prompts by backend/model/API/settings, corpus/benchmark versions, and safety policy. Judge data is redacted before JSON serialization; cached output is checked as both text and decoded JSON fields. Query-vector caches assert embedding/provider identity and dimension. Unsafe or incomplete responses are excluded from caching; deployment aliases need explicit refresh after upgrades. Cache hits report zero new billed token usage separately from the original response usage. Actual monetary costs require deployment pricing; do not infer them from token counts alone.
 
-CloudWatch will receive structured, already-redacted logs and custom latency, retrieval-score, refusal, error, and guardrail metrics. Use simple single-metric alarms. Evaluation reports identify backend/model, corpus, configuration, and measured run. The initial embedding redaction boundary is implemented; local query safety checks and fixture assessment are implemented; evaluation is implemented with documented judge limitations; broader safety coverage and monitoring remain future work.
+CloudWatch receives closed-schema invocation logs. Seven log metric filters per stage create request, latency, retained-chunk count, refusal, guardrail, error, and rejection metrics with environment/stage dimensions. Error and average-latency alarms use completed 60-second periods. The earlier planned retrieval-score metric is represented by retained-chunk count; per-chunk similarity stays in query journals. Evaluation reports identify backend/model, corpus, configuration, and measured run. The initial embedding redaction boundary is implemented; local query safety checks and fixture assessment are implemented; evaluation is implemented with documented judge limitations; broader safety coverage remains future work.
 
 ## Verified documentation and limits
 
@@ -75,12 +81,16 @@ Checked October 8, 2026:
 
 Phase 2 checked the [chat completion token cap](https://developers.openai.com/api/reference/python/resources/chat/subresources/completions/methods/create), [Ollama chat contract](https://docs.ollama.com/api/chat), [Bedrock Converse contract](https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/converse.html), and [LangChain runnable composition](https://reference.langchain.com/python/langchain-core/runnables/base) on October 9, 2026.
 
-Runtime evidence belongs in phase-0-results.md, phase-1-results.md, phase-2-results.md, phase-3-results.md, phase-4-results.md, phase-5-results.md, and phase-6-results.md. Documentation support is not equivalent to a passed local test. Real Azure embeddings and chat inference have run; real Bedrock inference has not.
+Runtime evidence belongs in phase-0-results.md, phase-1-results.md, phase-2-results.md, phase-3-results.md, phase-4-results.md, phase-5-results.md, phase-6-results.md, and phase-7-results.md. Documentation support is not equivalent to a passed local test. Real Azure embeddings and chat inference have run; real Bedrock inference has not.
 
 Phase 4 follows [reference-guided evaluation practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices), checked October 9, 2026. The 34-question development benchmark uses the same Azure model for generation and judging; reported scores are not independent legal accuracy. The focused context candidate improved judge answer scoring, but application defaults stay unchanged until broader validation. [Evaluation results](../eval/results/phase-4.md) record exact denominators, corpus identity, cache reuse, and all reported usage, including the interrupted development run.
 
-Phase 5 enabled Floci IAM enforcement and verified own-environment reads plus cross-environment AccessDenied using a dedicated assumed verification role. Lambda-only trust rejected admin assumption. Dummy admin credentials and documented unsigned/unknown authorization paths still have emulator bypasses. These tested boundaries are not full AWS security equivalence. SQL provisioning uses only example credentials and an ephemeral write-only password omitted from plan/state; Azure credentials never enter infrastructure. Log retention/concurrency are configured, while load behavior, timed retention, custom metrics, and alarms remain unverified.
+Phase 5 enabled Floci IAM enforcement and verified own-environment reads plus cross-environment AccessDenied using a dedicated assumed verification role. Lambda-only trust rejected admin assumption. Dummy admin credentials and documented unsigned/unknown authorization paths still have emulator bypasses. These tested boundaries are not full AWS security equivalence. SQL provisioning uses only example credentials and an ephemeral write-only password omitted from plan/state; Azure credentials never enter infrastructure. Log retention/concurrency are configured; load behavior and timed retention remain unverified. Phase 7 verifies custom metric statistics and automatic alarm transitions.
 
 Phase 6 uses a shared Linux ARM64 Python 3.12 image with per-stage handler commands. The locked dependency bundle exceeds AWS ZIP limits, so no dependency layer is deployed. Terraform owns a shared image repository name and consumes a generated code/requirements/Dockerfile fingerprint URI. Floci runs the locally built image without a registry push. Azure keys stay in the ignored host .env, mounted read-only through Floci Docker flags; Terraform Lambda settings contain only nonsecret environment-specific routing. This is a local credential-access mechanism, not cloud secrets management.
 
-The query handler validates JSON, media type, fields, and byte limits before provider calls, returns trusted citations with serializable timestamps, and uploads safe query usage journals to S3. Identity mismatch returns HTTP 409 with re-ingestion guidance before paid inference. Invalid requests and runtime failures return bounded structured errors without raw questions or exception bodies. Dev/prod workflow, repeat ingestion, API answer/refusal/redaction checks, and actual mismatch rejection passed. Fixed-name image-function replacements use destroy-before-create and can interrupt the local API. Phase 6 evidence records all Azure usage, including development failures; monitoring metrics and alarms remain unimplemented.
+The query handler validates JSON, media type, fields, and byte limits before provider calls, returns trusted citations with serializable timestamps, and uploads safe query usage journals to S3. Identity mismatch returns HTTP 409 with re-ingestion guidance before paid inference. Invalid requests and runtime failures return bounded structured errors without raw questions or exception bodies. Dev/prod workflow, repeat ingestion, API answer/refusal/redaction checks, and actual mismatch rejection passed. Fixed-name image-function replacements use destroy-before-create and can interrupt the local API. Phase 6 evidence records all Azure usage, including development failures; monitoring is implemented and its limitations are recorded in Phase 7 evidence.
+
+Phase 7 uses field exclusion before JSON serialization rather than emitting redacted free text. All four handlers produce trusted enums, bounded IDs, and numeric observations, including early failures. Stdout becomes CloudWatch log events; Terraform-managed metric filters generate metrics without wildcard metric permissions. The attempted namespace-conditioned PutMetricData route failed because Floci lacks that IAM condition context. Telemetry failures preserve application outcomes. CLI operations and requests that never reach a Lambda are outside this telemetry scope.
+
+Both environments showed deployed parse-errors ALARM→OK after real failed/healthy workflows. Isolated clones of every stage's error/latency configuration showed OK→ALARM→OK using clearly labelled synthetic samples, followed by alarm deletion. Real latency breaches were not induced. Inspection matched every metric sum to invocation logs; raw logs were checked for the synthetic email and actual Azure key. Periodic evaluation, limited log queries, missing-event coverage, and absence of notification/real-AWS testing remain explicit limits.

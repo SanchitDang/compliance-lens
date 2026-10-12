@@ -4,19 +4,24 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from compliancelens.config import Settings
+from compliancelens.telemetry import METRICS
 
 
 def image_uri(root: Path) -> str:
     return json.loads((root / "dist" / "image.json").read_text())["image_uri"]
 
 
-def terraform_inputs(root: Path) -> dict[str, str]:
+def terraform_inputs(root: Path) -> dict[str, object]:
     current = Settings(_env_file=root / ".env")
     example = Settings(
         _env_file=None, **{k.lower(): v for k, v in dotenv_values(root / ".env.example").items()}
     )
     return {
         "image_uri": image_uri(root),
+        "telemetry_namespace": current.telemetry_namespace,
+        "telemetry_metrics": {
+            field: {"name": name, "unit": unit} for field, (name, unit) in METRICS.items()
+        },
         "endpoint": current.aws_endpoint_url,
         "region": current.aws_default_region,
         "database_user": example.database_user,

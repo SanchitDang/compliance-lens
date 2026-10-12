@@ -26,6 +26,7 @@ from compliancelens.ingestion import persist_chunks, prepare_chunks
 from compliancelens.privacy import Redactor
 from compliancelens.rag import ask
 from compliancelens.store import IdentityMismatch, VectorStore, connect
+from compliancelens.telemetry import observe
 
 ROOT = Path(__file__).resolve().parents[1]
 if not (ROOT / "data" / "manifest.json").is_file():
@@ -87,6 +88,7 @@ def write_artifact(client: Any, bucket: str, key: str, value: dict) -> None:
     )
 
 
+@observe("parse", lambda: runtime_settings())
 def parse_handler(event: dict, context: Any) -> dict:
     request, source = trusted_event(event)
     settings = runtime_settings()
@@ -109,6 +111,7 @@ def parse_handler(event: dict, context: Any) -> dict:
     return request.model_dump()
 
 
+@observe("chunk", lambda: runtime_settings())
 def chunk_handler(event: dict, context: Any) -> dict:
     request, source = trusted_event(event)
     settings = runtime_settings()
@@ -137,6 +140,7 @@ def chunk_handler(event: dict, context: Any) -> dict:
     return request.model_dump()
 
 
+@observe("embed", lambda: runtime_settings())
 def embed_handler(event: dict, context: Any) -> dict:
     request, source = trusted_event(event)
     settings = runtime_settings()
@@ -214,6 +218,7 @@ def response(status: int, value: dict) -> dict:
     }
 
 
+@observe("query", lambda: runtime_settings())
 def query_handler(event: dict, context: Any) -> dict:
     if event.get("httpMethod") != "POST":
         return response(405, {"error": "method_not_allowed"})

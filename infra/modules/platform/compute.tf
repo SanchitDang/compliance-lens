@@ -43,13 +43,16 @@ resource "aws_lambda_function" "stages" {
   }
   environment {
     variables = {
-      AWS_ENDPOINT_URL    = replace(replace(var.endpoint, "127.0.0.1", "floci"), "localhost", "floci")
-      DATABASE_HOST       = "floci"
-      DATABASE_PORT       = tostring(aws_db_instance.vectors.port)
-      DATABASE_USER       = var.database_user
-      DATABASE_NAME       = var.database_name
-      RAW_BUCKET          = aws_s3_bucket.artifacts["raw"].id
-      INTERMEDIATE_BUCKET = aws_s3_bucket.artifacts["intermediate"].id
+      TELEMETRY_ENABLED     = "true"
+      TELEMETRY_NAMESPACE   = var.telemetry_namespace
+      TELEMETRY_ENVIRONMENT = var.environment
+      AWS_ENDPOINT_URL      = replace(replace(var.endpoint, "127.0.0.1", "floci"), "localhost", "floci")
+      DATABASE_HOST         = "floci"
+      DATABASE_PORT         = tostring(aws_db_instance.vectors.port)
+      DATABASE_USER         = var.database_user
+      DATABASE_NAME         = var.database_name
+      RAW_BUCKET            = aws_s3_bucket.artifacts["raw"].id
+      INTERMEDIATE_BUCKET   = aws_s3_bucket.artifacts["intermediate"].id
     }
   }
   architectures                  = ["arm64"]

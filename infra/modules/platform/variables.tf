@@ -24,3 +24,6 @@ variable "log_retention_days" { type = number }
 variable "reserved_concurrency" { type = number }
 
 variable "image_uri" { type = string }
+
+variable "telemetry_namespace" { type = string }
+variable "telemetry_metrics" { type = map(object({ name = string, unit = string })) }
