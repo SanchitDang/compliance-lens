@@ -25,6 +25,10 @@ def require_local_endpoint(endpoint: str) -> str:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
+    telemetry_enabled: bool = False
+    telemetry_namespace: str = Field(default="", pattern=r"^([A-Za-z][A-Za-z0-9/_-]{0,63})?$")
+    telemetry_environment: Literal["", "dev", "prod"] = ""
+
     raw_bucket: str = ""
     intermediate_bucket: str = ""
 
@@ -66,6 +70,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_chunk_overlap(self) -> "Settings":
+        if self.telemetry_enabled and (
+            not self.telemetry_namespace or not self.telemetry_environment
+        ):
+            raise ValueError("Enabled telemetry needs a namespace and environment")
         if self.chunk_overlap_bytes >= self.chunk_size_bytes:
             raise ValueError("CHUNK_OVERLAP_BYTES must be smaller than CHUNK_SIZE_BYTES")
         return self

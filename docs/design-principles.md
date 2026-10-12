@@ -28,6 +28,7 @@ src/compliancelens/
   safety.py                     local injection checks and fixture assessment
   evaluation.py                 benchmark validation, caches, judges, metrics, run journals
   handlers.py                   Lambda stages, trusted artifacts, validated query API
+  telemetry.py                  closed-schema logs, invocation metrics, best-effort emission
 tests/
   test_config.py                configuration validation tests
   test_spikes.py                local endpoint safety and spike checks
@@ -43,6 +44,7 @@ tests/
   test_evaluation.py             cache isolation, benchmark validation, and metric failures
   test_infrastructure.py         local provisioning boundaries and historical scaffolds
   test_handlers.py               request validation and trusted artifact boundaries
+  test_telemetry.py              PII exclusion, metric semantics, failure isolation
   fixtures/safety.json           synthetic PII, attacks, and benign controls
 infra/
   spikes/
@@ -58,6 +60,7 @@ infra/
   package.py                    locked Linux ARM64 application image builder
   Dockerfile                    credential-free Lambda image, explicit build context
   application.py                upload public sources, run workflow and API verification
+  monitoring.py                 log/metric inspection and alarm transition verification
   modules/platform/
     main.tf                     provider, versions, and sole resource-name locals
     variables.tf                validated module inputs, ephemeral dummy DB password
@@ -66,6 +69,7 @@ infra/
     compute.tf                  four image Lambdas, logs, scoped roles/policies
     workflow.tf                 artifact-reference Step Functions definition and role
     api.tf                      REST query API, Lambda integration and invoke permission
+    monitoring.tf               log-to-metric filters and single-metric alarms
     outputs.tf                  names, ARNs, database endpoint, and local API URL
     scaffold_handler.py         historical Phase 5 placeholder, retained for its contract tests
   environments/dev/
@@ -97,9 +101,10 @@ docs/
   phase-4-results.md             evaluation evidence, reproduction, and limitations
   phase-5-results.md             resource/API verification and measured emulator limits
   phase-6-results.md             live application workflow/API evidence and limits
+  phase-7-results.md             telemetry, alarm transitions, usage, emulator limits
 ```
 
-Phases 0 through 6 are complete; files above are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
+Phases 0 through 7 are complete; files above are registered. Future files must be registered here first. No empty marker files or duplicate setup guides. Generated virtual environments, lockfiles, caches, and Terraform state belong at their tool-standard paths and are covered by .gitignore.
 
 ## Naming and ownership
 
@@ -240,4 +245,14 @@ Names, state ownership, and endpoint rules remain active. Empty-table and scaffo
 - POST /query accepts only a JSON object with a nonempty bounded question string; reject extra fields, non-JSON content, malformed/base64/oversized bodies, and other methods before provider calls. Responses never echo raw inputs or exception bodies. Runtime errors return safe structured codes; index identity mismatch returns a fresh-table/re-ingestion instruction. Query safety and token caps remain enforced by rag.py.
 - Commands: `uv run python infra/package.py`; `docker compose up -d --wait`; initialize/validate each environment with `terragrunt init` and `terragrunt validate`; apply both environments with `terragrunt plan -out=phase6.tfplan` and `terragrunt apply phase6.tfplan`; `uv run python infra/application.py --environment dev --document-id <manifest-id>` uploads one verified public document and executes ingestion; use pipeda-accountability with `--verify-api` for its bounded live Azure query checks. Repeat ingestion proves zero embedding requests. Verify prod-style with a separate run. `uv run pytest --db-integration`, registered formatting, validation, repeat plans and secret checks remain required. infra/verify.py preserves historical Phase 5 scaffold assertions and is not the Phase 6 verifier.
 
-- Phase 6 retains the complete CLI corpus and verifies one public document in each application database. Fixed-name image-function replacements and API deployment use destroy-before-create to avoid inherited name collisions; expect local downtime during replacement. The Docker base tag remains mutable; record the actual image ID in ignored image.json. Monitoring is reserved for Phase 7.
+- Phase 6 retains the complete CLI corpus and verifies one public document in each application database. Fixed-name image-function replacements and API deployment use destroy-before-create to avoid inherited name collisions; expect local downtime during replacement. The Docker base tag remains mutable; record the actual image ID in ignored image.json. Phase 7 now implements monitoring.
+
+## Phase 7 monitoring conventions
+
+- telemetry.py owns the metric mapping: Requests, LatencyMs, RetrievedChunks, Refusals, GuardrailBlocks, Errors, and RejectedRequests. Metric dimensions are Environment (dev/prod) and Stage (parse/chunk/embed/query). No user input, document text, IDs, model deployment aliases, or unbounded dimensions enter metrics. Settings own TELEMETRY_ENABLED, TELEMETRY_NAMESPACE, and TELEMETRY_ENVIRONMENT; each is registered once in .env.example. CLI defaults disable publication. Terraform enables Lambda telemetry, sets the configured namespace, and owns the environment dimension. The stage is selected by its code decorator, not another env variable.
+- Structured stdout records use telemetry_event=invocation, generated UUID invocation_id, trusted enum stage/environment/status/reason/backends, safe UUID run_id when available, HTTP status, latency_ms, retrieved_chunks, refusals, guardrail_blocks, errors, rejected_requests, and requests=1. Arbitrary text fields, prompts, bodies, questions, answers, citations, exception strings, and unknown report fields are excluded before serialization. This closed schema performs telemetry redaction by construction, independent of detector recall; admitted enums/numbers/UUIDs are validated. Existing provider/journal redaction remains unchanged.
+- A decorator observes all four handlers, including failures before ingestion setup and query validation. It never retries paid work. Telemetry failures must preserve handler results/exceptions; emit only a fixed telemetry delivery error code when stdout remains available. App metrics are produced by Terraform-managed CloudWatch log metric filters, one per stage/metric, with the exact invocation JSON pattern and numeric field references. Functions retain only their existing log-group permissions; no wildcard PutMetricData grant. The attempted namespace-conditioned grant failed because Floci 2.2.0 does not resolve cloudwatch:namespace in IAM context. No direct metric SDK calls occur in application handlers.
+- Errors counts handler exceptions or query operational errors (409/5xx), not validation rejection or legitimate refusal. RejectedRequests counts 400/405/415. Refusals counts safe refusals; GuardrailBlocks distinguishes security/output-validation refusals from weak/unsupported evidence. RetrievedChunks counts the final retained query evidence, zero for nonquery operations and pre-retrieval refusal. LatencyMs measures handler work through response/journal creation, excluding telemetry delivery and platform cold-start initialization. Always publish zero-valued counters for a completed invocation.
+- monitoring.tf defines seven log metric filters and errors/latency alarms for each of four stages. main.tf locals own names {prefix}-{stage}-errors and {prefix}-{stage}-latency, plus metric-filter names {prefix}-{stage}-{metric-field-with-hyphens}, period 60 seconds, Sum Errors threshold 0 and Average LatencyMs threshold 30000, evaluation_periods=1, missing data notBreaching. Thresholds are local demonstration defaults, not an SLO. No SNS notifications or metric-math expressions. outputs.tf exposes namespace, alarm names, and derived log-group names; monitoring.py reads outputs and imports telemetry.py metric names rather than creating alternatives.
+- infra/monitoring.py inspect --environment dev reads recent logs, metric statistics, and alarm states; verify --environment dev --document-id pipeda-accountability exercises invalid/injection requests, an invalid workflow, one bounded Azure supported query, and repeat ingestion without embedding calls. Publish clearly marked synthetic samples only to an isolated temporary namespace {namespace}/Verification/{uuid} with temporary alarms named {Terraform-owned errors alarm}-probe-{uuid} and {Terraform-owned latency alarm}-probe-{uuid}; delete alarms after automatic transitions. Temporary thresholds/dimensions mirror deployed alarms. Do not fake latency delays or contaminate application series. Never call SetAlarmState to claim evaluator success. Synthetic observations are separately labelled in the ignored UUID verification journal. Repeat for prod-style. Verify synthetic email and the actual Azure key are absent from raw handler CloudWatch messages. Inspect projects only closed-schema fields and reports historical delivery failures as counts.
+- Commands: `uv run python infra/package.py --application-only` after a full dependency build; `docker compose up -d --wait`; from each environment run `terragrunt validate`, `terragrunt plan -out=phase7.tfplan`, `terragrunt apply phase7.tfplan`, and `terragrunt plan -detailed-exitcode`; `uv run python infra/monitoring.py inspect --environment dev`; `uv run python infra/monitoring.py verify --environment dev --document-id pipeda-accountability` and the same for prod. Full tests/format/secret checks remain canonical. Actual alarm observations must distinguish configuration, synthetic evaluation, and production-series evaluation. Phase 8 remains unstarted. Similarity remains in query journals; the monitoring retrieval metric counts retained chunks, a documented deviation from the earlier planned score.
