@@ -112,6 +112,8 @@ Phases 0 through 8 are complete; files above are registered. Future files must b
 
 ## Naming and ownership
 
+- The GitHub repository is SanchitDang/compliance-lens. Repository links and the local origin use this slug. The Python package/CLI and infrastructure names follow their registered names below.
+
 - Work on the dev branch. Push changes to dev, open a pull request into main, and merge through that pull request. Do not commit feature work directly to main. The initial Phase 0 publication bootstraps main before dev is created.
 
 - Python files, modules, functions, variables, tables, and columns use snake_case. Classes use PascalCase. Constants and environment variables use UPPER_SNAKE_CASE.

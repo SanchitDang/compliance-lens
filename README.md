@@ -1,6 +1,6 @@
 # ComplianceLens
 
-[![CI](https://github.com/SanchitDang/compliancelens/actions/workflows/ci.yml/badge.svg)](https://github.com/SanchitDang/compliancelens/actions/workflows/ci.yml)
+[![CI](https://github.com/SanchitDang/compliance-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/SanchitDang/compliance-lens/actions/workflows/ci.yml)
 
 A Python/LangChain RAG assistant for public OSFI, FINTRAC and PIPEDA guidance, with source citations, pgvector retrieval, safety checks and a measured evaluation set.
 
